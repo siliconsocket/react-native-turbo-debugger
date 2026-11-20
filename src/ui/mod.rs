@@ -1,10 +1,11 @@
+mod code;
 mod console;
 mod investigation;
 mod theme;
 
-use crate::{app::Capture, mock, session::*};
+use crate::{app::Capture, bridge, mock, session::*};
 use gpui::{prelude::*, *};
-use gpui_component::input::InputState;
+use gpui_component::{Sizable, Theme, input::InputState, switch::Switch};
 use std::collections::HashSet;
 use theme::*;
 
@@ -22,11 +23,14 @@ enum Panel {
 pub struct Debugger {
     maximized: Option<Panel>,
     capture: Capture,
+    live: bool,
+    bridge_error: bool,
     state_view: bool,
     tab: usize,
     native: bool,
     drawer: bool,
     filters: [Entity<InputState>; 2],
+    state_sources: [bool; 3],
     levels: [usize; 2],
     expanded: HashSet<String>,
     focus: FocusHandle,
@@ -34,9 +38,49 @@ pub struct Debugger {
 
 impl Debugger {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+        Theme::global_mut(cx).highlight_theme = code::syntax_theme();
         let scenario = std::env::var("RNTD_SCENARIO").unwrap_or_default();
-        let mut capture = Capture::new(mock::scenario(&scenario));
-        capture.connected = scenario != "disconnected";
+        let live = std::env::var("RNTD_LIVE").as_deref() == Ok("1");
+        let mut bridge_error = false;
+        let capture = if live {
+            match bridge::listen() {
+                Ok(receiver) => {
+                    cx.spawn(async move |this, cx| {
+                        loop {
+                            Timer::after(std::time::Duration::from_millis(40)).await;
+                            let updates: Vec<_> = receiver.try_iter().take(256).collect();
+                            if updates.is_empty() {
+                                continue;
+                            }
+                            if this
+                                .update(cx, |this, cx| {
+                                    for update in updates {
+                                        this.capture.ingest(update);
+                                    }
+                                    cx.notify();
+                                })
+                                .is_err()
+                            {
+                                break;
+                            }
+                        }
+                    })
+                    .detach();
+                }
+                Err(error) => {
+                    eprintln!(
+                        "Network bridge could not listen on 127.0.0.1:{}: {error}",
+                        bridge::PORT
+                    );
+                    bridge_error = true;
+                }
+            }
+            Capture::live()
+        } else {
+            let mut capture = Capture::new(mock::scenario(&scenario));
+            capture.connected = scenario != "disconnected";
+            capture
+        };
         let filters = std::array::from_fn(|_| {
             let input = cx.new(|cx| InputState::new(window, cx).placeholder("Filter text…"));
             cx.subscribe(&input, |_, _, _: &gpui_component::input::InputEvent, cx| {
@@ -50,11 +94,14 @@ impl Debugger {
         Self {
             maximized: None,
             capture,
+            live,
+            bridge_error,
             state_view: std::env::var("RNTD_VIEW").as_deref() == Ok("state"),
             tab: 0,
             native: false,
             drawer: false,
             filters,
+            state_sources: [true; 3],
             levels: [0; 2],
             expanded: HashSet::new(),
             focus,
@@ -116,8 +163,7 @@ impl Debugger {
     fn move_selection(&mut self, delta: isize) {
         let ids: Vec<_> = self
             .capture
-            .visible()
-            .filter(|e| matches!(e.data, Data::Zustand { .. }))
+            .visible_states(self.state_sources)
             .map(|e| e.id.clone())
             .collect();
         if ids.is_empty() {
@@ -133,6 +179,7 @@ impl Debugger {
 }
 impl Render for Debugger {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.capture.reconcile_action(self.state_sources);
         let width = f32::from(window.viewport_size().width);
         let rail = width < 1280.;
         let title = if self.state_view {
@@ -179,7 +226,9 @@ impl Render for Debugger {
             .child(session.device.clone())
             .child(muted("│"))
             .child(mono(
-                if self.capture.connected {
+                if self.bridge_error {
+                    "○ Port unavailable"
+                } else if self.capture.connected {
                     "● Live"
                 } else {
                     "○ Disconnected"
@@ -217,11 +266,26 @@ impl Render for Debugger {
             .flex_none()
             .gap_2()
             .child(heading(title))
-            .child(muted(if self.state_view {
-                "Zustand store"
-            } else {
-                "React Native"
-            }))
+            .when(self.state_view, |d| {
+                d.child(
+                    row()
+                        .gap_3()
+                        .pl_2()
+                        .children(STATE_SOURCES.iter().enumerate().map(
+                            |(index, (source, label))| {
+                                Switch::new(*source)
+                                    .small()
+                                    .label(*label)
+                                    .checked(self.state_sources[index])
+                                    .on_click(cx.listener(move |s, enabled, _, cx| {
+                                        s.state_sources[index] = *enabled;
+                                        cx.notify();
+                                    }))
+                            },
+                        )),
+                )
+            })
+            .when(!self.state_view, |d| d.child(muted("React Native")))
             .child(div().flex_1())
             .when(self.state_view && rail && self.maximized.is_none(), |d| {
                 d.child(self.button("details", "Details", self.drawer, cx, |s, _| {
@@ -258,11 +322,14 @@ impl Render for Debugger {
                 cx,
                 |s, _| s.capture.stopped = true,
             ))
-            .when(!self.capture.stopped && self.capture.connected, |d| {
-                d.child(self.button("append", "+ Demo event", false, cx, |s, _| {
-                    s.capture.append()
-                }))
-            });
+            .when(
+                !self.live && !self.capture.stopped && self.capture.connected,
+                |d| {
+                    d.child(self.button("append", "+ Demo event", false, cx, |s, _| {
+                        s.capture.append()
+                    }))
+                },
+            );
         let content = if self.state_view {
             self.investigation(width, window, cx)
         } else {

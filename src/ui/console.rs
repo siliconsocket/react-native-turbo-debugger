@@ -1,7 +1,7 @@
-use super::*;
+use super::{code::json_block, *};
 use gpui_component::{Sizable, input::Input, text::TextView};
 
-pub(super) fn selectable(id: String, text: &str, window: &mut Window, cx: &mut App) -> TextView {
+fn selectable(id: String, text: &str, window: &mut Window, cx: &mut App) -> TextView {
     let escaped = text
         .replace('&', "&amp;")
         .replace('<', "&lt;")
@@ -22,7 +22,7 @@ impl Debugger {
     pub(super) fn console(&self, width: f32, window: &mut Window, cx: &mut Context<Self>) -> Div {
         match self.maximized {
             Some(Panel::Network) => return self.network(width, window, cx),
-            Some(Panel::Preview) => return self.diff_preview(width, cx),
+            Some(Panel::Preview) => return self.diff_preview(cx),
             Some(Panel::Timeline) => return self.timeline(width, cx),
             Some(Panel::Logs { native }) => return self.logs(native, false, window, cx),
             _ => {}
@@ -33,7 +33,7 @@ impl Debugger {
             .min_h_0()
             .gap_2()
             .child(self.network(width, window, cx).flex_basis(relative(0.6)))
-            .child(self.diff_preview(width, cx).flex_basis(relative(0.4)));
+            .child(self.diff_preview(cx).flex_basis(relative(0.4)));
         col()
             .flex_1()
             .gap_2()
@@ -114,15 +114,13 @@ impl Debugger {
             .visible()
             .filter(|e| matches!(e.data, Data::Network { .. }))
             .collect();
+        let cursor = self.capture.cursor();
         let failures = events
             .iter()
             .filter(|e| {
                 matches!(
-                    e.data,
-                    Data::Network {
-                        status: Some(400..),
-                        ..
-                    }
+                    e.network_status_at(cursor),
+                    Some((Some(400..), _, _)) | Some((_, _, Some(NetworkOutcome::Failed)))
                 )
             })
             .count();
@@ -142,23 +140,27 @@ impl Debugger {
             .border_color(color("divider"))
             .child(muted("Method").w(px(54.)))
             .child(muted("Path").flex_1())
-            .child(muted("Status").w(px(48.)))
+            .child(muted("Status").w(px(66.)))
             .child(muted("Time").w(px(58.)))
             .when(waterfall, |d| d.child(muted("Waterfall").w(px(92.))));
         let mut list = scroll("requests");
         for e in events {
-            let Data::Network {
-                method,
-                path,
-                status,
-                duration_ms,
-                ..
-            } = &e.data
-            else {
+            let Data::Network { method, path, .. } = &e.data else {
                 continue;
             };
             let id = e.id.clone();
-            let fail = status.is_some_and(|s| s >= 400);
+            let (status, duration_ms, outcome) = e.network_status_at(cursor).unwrap();
+            let fail = status.is_some_and(|s| s >= 400) || outcome == Some(NetworkOutcome::Failed);
+            let status_label =
+                status
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| match outcome {
+                        Some(NetworkOutcome::Failed) => "Failed".into(),
+                        Some(NetworkOutcome::Cancelled) => "Canceled".into(),
+                        Some(NetworkOutcome::Disconnected) => "Lost".into(),
+                        _ if self.live => "Pending".into(),
+                        _ => "—".into(),
+                    });
             list = list.child(
                 row()
                     .id(SharedString::from(format!("req-{id}")))
@@ -178,13 +180,7 @@ impl Debugger {
                     .border_color(rgb(0x303437))
                     .child(mono(method, if method == "GET" { "key" } else { "accent" }).w(px(54.)))
                     .child(mono(path, "text").flex_1().overflow_hidden())
-                    .child(
-                        mono(
-                            status.map_or("—".into(), |v| v.to_string()),
-                            if fail { "error" } else { "string" },
-                        )
-                        .w(px(48.)),
-                    )
+                    .child(mono(status_label, if fail { "error" } else { "string" }).w(px(66.)))
                     .child(
                         mono(
                             duration_ms.map_or("—".into(), |v| format!("{v} ms")),
@@ -199,7 +195,7 @@ impl Debugger {
                                 .h(px(8.))
                                 .relative()
                                 .bg(color("surface"))
-                                .when_some(*duration_ms, |d, ms| {
+                                .when_some(duration_ms, |d, ms| {
                                     d.child(
                                         div()
                                             .absolute()
@@ -229,25 +225,31 @@ impl Debugger {
                         s.capture.request = None
                     })),
             );
-            let mut body = format!(
-                "{path}\n{}",
-                response
-                    .as_ref()
-                    .map_or("No response captured".into(), |v| {
-                        serde_json::to_string_pretty(v).unwrap()
-                    })
-            );
+            let id = &e.id;
+            list = list.child(selectable(format!("response-path-{id}"), path, window, cx));
+            if let Some(response) = response {
+                list = list.child(json_block(format!("response-{id}"), response, window, cx));
+            } else {
+                list = list.child(muted("No response captured").px_2());
+            }
             for other in self.capture.visible().filter(|o| e.related(o)) {
                 if let Some(log) = other.log(false).or_else(|| other.log(true)) {
-                    body.push_str(&format!(
-                        "\n{}  {}  {}",
-                        log.level,
-                        log.message,
-                        serde_json::json!(log.args)
-                    ));
+                    let log_id = &other.id;
+                    list = list
+                        .child(selectable(
+                            format!("response-log-{log_id}"),
+                            &format!("{}  {}", log.level, log.message),
+                            window,
+                            cx,
+                        ))
+                        .child(json_block(
+                            format!("response-args-{log_id}"),
+                            &log.args,
+                            window,
+                            cx,
+                        ));
                 }
             }
-            list = list.child(selectable(format!("response-{}", e.id), &body, window, cx));
         }
         if self
             .capture
@@ -401,16 +403,14 @@ impl Debugger {
                     )),
             );
             if open {
-                list = list.child(selectable(
-                    format!("args-{}", e.id),
-                    &format!(
-                        "{}\n{}",
-                        log.message,
-                        serde_json::to_string_pretty(&log.args).unwrap()
-                    ),
-                    window,
-                    cx,
-                ));
+                list = list
+                    .child(selectable(
+                        format!("message-{}", e.id),
+                        &log.message,
+                        window,
+                        cx,
+                    ))
+                    .child(json_block(format!("args-{}", e.id), &log.args, window, cx));
             }
         }
         panel().child(bar).child(list)

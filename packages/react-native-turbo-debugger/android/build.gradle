@@ -1,0 +1,28 @@
+plugins {
+    id 'com.android.library'
+}
+
+def newArchitecture = providers.gradleProperty('newArchEnabled').orElse('true').get().toBoolean()
+if (newArchitecture) {
+    apply plugin: 'com.facebook.react'
+    react {
+        jsRootDir = file('../specs')
+        libraryName = 'RNTurboDebuggerStateSpec'
+        codegenJavaPackageName = 'com.siliconsocket.rnturbodebugger'
+    }
+}
+
+android {
+    sourceSets.main.java.srcDir(newArchitecture ? 'src/newarch/java' : 'src/legacy/java')
+    namespace 'com.siliconsocket.rnturbodebugger'
+    compileSdk rootProject.ext.compileSdkVersion
+
+    defaultConfig {
+        minSdk rootProject.ext.minSdkVersion
+    }
+}
+
+dependencies {
+    compileOnly 'com.facebook.react:react-android'
+    compileOnly 'com.squareup.okhttp3:okhttp:4.9.2'
+}

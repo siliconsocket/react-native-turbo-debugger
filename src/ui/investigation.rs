@@ -1,4 +1,7 @@
-use super::{console::selectable, *};
+use super::{
+    code::{json_block, json_line},
+    *,
+};
 use serde_json::Value;
 use std::collections::BTreeSet;
 
@@ -33,10 +36,7 @@ fn changes(before: &Value, after: &Value) -> Div {
                         .bg(rgb(bg))
                         .child(mono(symbol, tone))
                         .child(mono(format!("{name}:"), "key"))
-                        .child(mono(
-                            v.to_string(),
-                            if v.is_string() { "string" } else { "accent" },
-                        )),
+                        .child(json_line(v)),
                 );
             }
         }
@@ -44,12 +44,13 @@ fn changes(before: &Value, after: &Value) -> Div {
     lines
 }
 impl Debugger {
-    pub(super) fn diff_preview(&self, width: f32, cx: &mut Context<Self>) -> Div {
+    pub(super) fn diff_preview(&self, cx: &mut Context<Self>) -> Div {
         let mut body = scroll("diff-preview");
-        let mut rev = String::new();
         if let Some(Event {
             data:
-                Data::Zustand {
+                Data::State {
+                    source,
+                    store,
                     revision_before,
                     revision_after,
                     before,
@@ -59,17 +60,22 @@ impl Debugger {
             ..
         }) = self.capture.selected(&self.capture.action)
         {
-            rev = format!("revision {revision_before} → {revision_after}");
-            if width < 1280. && self.maximized.is_none() {
-                body = body.child(muted(std::mem::take(&mut rev)).px_3().pt_1());
-            }
-            body = body.child(changes(before, after));
+            body = body
+                .child(
+                    muted(format!(
+                        "{} · {store} · revision {revision_before} → {revision_after}",
+                        state_source_label(source)
+                    ))
+                    .px_3()
+                    .pt_2(),
+                )
+                .child(changes(before, after));
         } else {
-            body = body.child(muted("No action selected").p_3());
+            body = body.child(muted("No state transitions").p_3());
         }
         panel()
             .child(
-                head("ZUSTAND STATE DIFF", rev)
+                head("STATE DIFF", "")
                     .child(div().flex_1())
                     .child(self.button("inspect", "Inspect ↗", false, cx, |s, _| s.navigate(true)))
                     .child(self.panel_control(Panel::Preview, cx)),
@@ -85,11 +91,7 @@ impl Debugger {
         if let Some(Panel::Logs { native }) = self.maximized {
             return self.logs(native, true, window, cx);
         }
-        let events: Vec<_> = self
-            .capture
-            .visible()
-            .filter(|e| matches!(e.data, Data::Zustand { .. }))
-            .collect();
+        let events: Vec<_> = self.capture.visible_states(self.state_sources).collect();
         let mut history = panel()
             .when(self.maximized.is_none(), |d| {
                 d.flex_none()
@@ -101,7 +103,7 @@ impl Debugger {
                     if width < 1100. {
                         "HISTORY"
                     } else {
-                        "ACTION HISTORY"
+                        "STATE HISTORY"
                     },
                     events.len().to_string(),
                 )
@@ -109,21 +111,45 @@ impl Debugger {
                 .child(self.panel_control(Panel::History, cx)),
             );
         let mut list = scroll("history");
+        if events.is_empty() {
+            list = list.child(muted("No state transitions").p_3());
+        }
         for e in events {
-            let Data::Zustand { action, .. } = &e.data else {
+            let Data::State {
+                source,
+                store,
+                action,
+                ..
+            } = &e.data
+            else {
                 continue;
             };
             let id = e.id.clone();
             list = list.child(
                 self.button(
                     format!("history-{id}"),
-                    format!("{}    {action}", time(e.at_ms)),
+                    "",
                     self.capture.action.as_ref() == Some(&id),
                     cx,
                     move |s, _| s.capture.action = Some(id.clone()),
                 )
                 .rounded_none()
-                .h(px(32.)),
+                .h(px(50.))
+                .flex_none()
+                .child(
+                    col()
+                        .min_w_0()
+                        .overflow_hidden()
+                        .child(
+                            muted(format!("{} · {}", state_source_label(source), store)).truncate(),
+                        )
+                        .child(
+                            row()
+                                .gap_2()
+                                .child(mono(time(e.at_ms), "secondary").flex_none())
+                                .child(div().truncate().child(action.clone())),
+                        ),
+                ),
             );
         }
         history = history.child(list);
@@ -152,7 +178,8 @@ impl Debugger {
         let mut code = scroll("code");
         let mut details = scroll("event-details").p_3().gap_2();
         if let Some(e) = self.capture.selected(&self.capture.action)
-            && let Data::Zustand {
+            && let Data::State {
+                source,
                 store,
                 action,
                 revision_before,
@@ -164,38 +191,40 @@ impl Debugger {
         {
             let rev = format!("{revision_before} → {revision_after}");
             code = code.child(
-                mono(format!("{store}   ·   revision {rev}"), "secondary")
-                    .px_3()
-                    .py_2(),
+                mono(
+                    format!(
+                        "{} · {store} · {action} · revision {rev}",
+                        state_source_label(source)
+                    ),
+                    "secondary",
+                )
+                .px_3()
+                .py_2(),
             );
             if self.tab == 0 {
                 code = code.child(changes(before, after));
             } else {
-                let value = match self.tab {
-                    1 => after.clone(),
-                    2 => before.clone(),
-                    _ => serde_json::to_value(e).unwrap(),
-                };
-                code = code.child(selectable(
-                    format!("snapshot-{}-{}", e.id, self.tab),
-                    &serde_json::to_string_pretty(&value).unwrap(),
-                    window,
-                    cx,
-                ));
+                let id = format!("snapshot-{}-{}", e.id, self.tab);
+                code = code.child(match self.tab {
+                    1 => json_block(id, after, window, cx),
+                    2 => json_block(id, before, window, cx),
+                    _ => json_block(id, e, window, cx),
+                });
             }
             for (label, value) in [
                 ("Time", time(e.at_ms)),
-                ("Store", store.clone()),
+                ("Source", state_source_label(source).into()),
+                ("Store / atom", store.clone()),
                 ("Action", action.clone()),
                 ("State revision", rev),
-                (
-                    "Payload",
-                    payload
-                        .as_ref()
-                        .map_or("No payload captured".into(), |p| p.to_string()),
-                ),
             ] {
                 details = details.child(muted(label)).child(mono(value, "text"));
+            }
+            details = details.child(muted("Payload"));
+            if let Some(payload) = payload {
+                details = details.child(json_line(payload));
+            } else {
+                details = details.child(muted("No payload captured"));
             }
             let linked: Vec<_> = self
                 .capture
@@ -222,7 +251,7 @@ impl Debugger {
                 }
             }
         } else {
-            code = code.child(muted("No action selected").p_3());
+            code = code.child(muted("No state transitions").p_3());
         }
         let details = panel()
             .when(self.maximized.is_none(), |d| {
