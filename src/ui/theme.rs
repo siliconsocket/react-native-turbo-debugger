@@ -55,14 +55,15 @@ pub fn heading(s: &str) -> Div {
 pub fn muted(s: impl Into<String>) -> Div {
     div().text_color(color("secondary")).child(s.into())
 }
-pub fn mono(s: impl Into<String>, tone: &str) -> Div {
+pub fn monospace() -> Div {
     div()
         .font_family("IBM Plex Mono")
         .text_size(px(13.))
         .line_height(px(19.))
         .whitespace_nowrap()
-        .text_color(color(tone))
-        .child(s.into())
+}
+pub fn mono(s: impl Into<String>, tone: &str) -> Div {
+    monospace().text_color(color(tone)).child(s.into())
 }
 pub fn scroll(id: &str) -> Stateful<Div> {
     col()

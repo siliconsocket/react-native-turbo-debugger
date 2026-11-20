@@ -1,0 +1,20 @@
+{
+  "name": "Monokai",
+  "appearance": "dark",
+  "style": {
+    "syntax": {
+      "property": { "color": "#A6E22E" },
+      "string": { "color": "#E6DB74" },
+      "string.escape": { "color": "#66D9EF" },
+      "number": { "color": "#BE9BFF" },
+      "boolean": { "color": "#FF6A9C" },
+      "constant": { "color": "#FF6A9C" },
+      "keyword": { "color": "#FF6A9C" },
+      "function": { "color": "#A6E22E" },
+      "type": { "color": "#66D9EF" },
+      "operator": { "color": "#FF6A9C" },
+      "punctuation": { "color": "#BAB7A8" },
+      "comment": { "color": "#A19C8D" }
+    }
+  }
+}

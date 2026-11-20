@@ -1,7 +1,7 @@
-use super::*;
+use super::{code::json_block, *};
 use gpui_component::{Sizable, input::Input, text::TextView};
 
-pub(super) fn selectable(id: String, text: &str, window: &mut Window, cx: &mut App) -> TextView {
+fn selectable(id: String, text: &str, window: &mut Window, cx: &mut App) -> TextView {
     let escaped = text
         .replace('&', "&amp;")
         .replace('<', "&lt;")
@@ -225,25 +225,31 @@ impl Debugger {
                         s.capture.request = None
                     })),
             );
-            let mut body = format!(
-                "{path}\n{}",
-                response
-                    .as_ref()
-                    .map_or("No response captured".into(), |v| {
-                        serde_json::to_string_pretty(v).unwrap()
-                    })
-            );
+            let id = &e.id;
+            list = list.child(selectable(format!("response-path-{id}"), path, window, cx));
+            if let Some(response) = response {
+                list = list.child(json_block(format!("response-{id}"), response, window, cx));
+            } else {
+                list = list.child(muted("No response captured").px_2());
+            }
             for other in self.capture.visible().filter(|o| e.related(o)) {
                 if let Some(log) = other.log(false).or_else(|| other.log(true)) {
-                    body.push_str(&format!(
-                        "\n{}  {}  {}",
-                        log.level,
-                        log.message,
-                        serde_json::json!(log.args)
-                    ));
+                    let log_id = &other.id;
+                    list = list
+                        .child(selectable(
+                            format!("response-log-{log_id}"),
+                            &format!("{}  {}", log.level, log.message),
+                            window,
+                            cx,
+                        ))
+                        .child(json_block(
+                            format!("response-args-{log_id}"),
+                            &log.args,
+                            window,
+                            cx,
+                        ));
                 }
             }
-            list = list.child(selectable(format!("response-{}", e.id), &body, window, cx));
         }
         if self
             .capture
@@ -397,16 +403,14 @@ impl Debugger {
                     )),
             );
             if open {
-                list = list.child(selectable(
-                    format!("args-{}", e.id),
-                    &format!(
-                        "{}\n{}",
-                        log.message,
-                        serde_json::to_string_pretty(&log.args).unwrap()
-                    ),
-                    window,
-                    cx,
-                ));
+                list = list
+                    .child(selectable(
+                        format!("message-{}", e.id),
+                        &log.message,
+                        window,
+                        cx,
+                    ))
+                    .child(json_block(format!("args-{}", e.id), &log.args, window, cx));
             }
         }
         panel().child(bar).child(list)

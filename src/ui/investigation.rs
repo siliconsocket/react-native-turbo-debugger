@@ -1,4 +1,7 @@
-use super::{console::selectable, *};
+use super::{
+    code::{json_block, json_line},
+    *,
+};
 use serde_json::Value;
 use std::collections::BTreeSet;
 
@@ -33,10 +36,7 @@ fn changes(before: &Value, after: &Value) -> Div {
                         .bg(rgb(bg))
                         .child(mono(symbol, tone))
                         .child(mono(format!("{name}:"), "key"))
-                        .child(mono(
-                            v.to_string(),
-                            if v.is_string() { "string" } else { "accent" },
-                        )),
+                        .child(json_line(v)),
                 );
             }
         }
@@ -204,17 +204,12 @@ impl Debugger {
             if self.tab == 0 {
                 code = code.child(changes(before, after));
             } else {
-                let value = match self.tab {
-                    1 => after.clone(),
-                    2 => before.clone(),
-                    _ => serde_json::to_value(e).unwrap(),
-                };
-                code = code.child(selectable(
-                    format!("snapshot-{}-{}", e.id, self.tab),
-                    &serde_json::to_string_pretty(&value).unwrap(),
-                    window,
-                    cx,
-                ));
+                let id = format!("snapshot-{}-{}", e.id, self.tab);
+                code = code.child(match self.tab {
+                    1 => json_block(id, after, window, cx),
+                    2 => json_block(id, before, window, cx),
+                    _ => json_block(id, e, window, cx),
+                });
             }
             for (label, value) in [
                 ("Time", time(e.at_ms)),
@@ -222,14 +217,14 @@ impl Debugger {
                 ("Store / atom", store.clone()),
                 ("Action", action.clone()),
                 ("State revision", rev),
-                (
-                    "Payload",
-                    payload
-                        .as_ref()
-                        .map_or("No payload captured".into(), |p| p.to_string()),
-                ),
             ] {
                 details = details.child(muted(label)).child(mono(value, "text"));
+            }
+            details = details.child(muted("Payload"));
+            if let Some(payload) = payload {
+                details = details.child(json_line(payload));
+            } else {
+                details = details.child(muted("No payload captured"));
             }
             let linked: Vec<_> = self
                 .capture

@@ -1,10 +1,11 @@
+mod code;
 mod console;
 mod investigation;
 mod theme;
 
 use crate::{app::Capture, bridge, mock, session::*};
 use gpui::{prelude::*, *};
-use gpui_component::{Sizable, input::InputState, switch::Switch};
+use gpui_component::{Sizable, Theme, input::InputState, switch::Switch};
 use std::collections::HashSet;
 use theme::*;
 
@@ -37,6 +38,7 @@ pub struct Debugger {
 
 impl Debugger {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+        Theme::global_mut(cx).highlight_theme = code::syntax_theme();
         let scenario = std::env::var("RNTD_SCENARIO").unwrap_or_default();
         let live = std::env::var("RNTD_LIVE").as_deref() == Ok("1");
         let mut bridge_error = false;
