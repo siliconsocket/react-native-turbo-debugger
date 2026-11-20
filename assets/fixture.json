@@ -1,0 +1,83 @@
+{
+  "sessionId": "demo-ios",
+  "app": "Trailhead",
+  "appIcon": null,
+  "device": "iPhone 16 Pro",
+  "events": [
+    {
+      "id": "a1",
+      "atMs": 312,
+      "kind": "zustand",
+      "correlationId": "select-1",
+      "store": "useTrailStore",
+      "action": "selectTrail",
+      "revisionBefore": 4,
+      "revisionAfter": 5,
+      "before": {
+        "selectedTrail": null
+      },
+      "after": {
+        "selectedTrail": "ridge-07"
+      }
+    },
+    {
+      "id": "j1",
+      "atMs": 314,
+      "kind": "js",
+      "level": "INFO",
+      "correlationId": "select-1",
+      "message": "Trail selected",
+      "args": [
+        "ridge-07"
+      ]
+    },
+    {
+      "id": "n1",
+      "atMs": 325,
+      "kind": "native",
+      "level": "INFO",
+      "correlationId": "select-1",
+      "subsystem": "MapKit",
+      "message": "Annotation selected"
+    },
+    {
+      "id": "r1",
+      "atMs": 330,
+      "kind": "network",
+      "correlationId": "select-1",
+      "method": "GET",
+      "path": "/api/trails/ridge-07",
+      "status": 200,
+      "durationMs": 67,
+      "response": {
+        "id": "ridge-07"
+      }
+    },
+    {
+      "id": "r2",
+      "atMs": 579,
+      "kind": "network",
+      "correlationId": "sync-1",
+      "method": "POST",
+      "path": "/api/sync",
+      "status": 503,
+      "durationMs": 212,
+      "response": {
+        "error": "Service Unavailable"
+      }
+    },
+    {
+      "id": "j2",
+      "atMs": 792,
+      "kind": "js",
+      "level": "WARN",
+      "correlationId": "sync-1",
+      "message": "Remote sync failed",
+      "args": [
+        {
+          "retryInMs": 5000
+        }
+      ]
+    }
+  ]
+}
