@@ -1,6 +1,6 @@
 # React Native Turbo Debugger
 
-**Status: In development.** The current milestone is a macOS desktop prototype with simulated capture. The development branch is `develop`. [Engineering handoff](docs/HANDOFF.md)
+**Status: In development.** The macOS desktop supports live network capture from React Native Debug builds and includes a bundled demo session. The development branch is `develop`. [Engineering handoff](docs/HANDOFF.md)
 
 A native Rust and GPUI desktop prototype for inspecting a captured React Native session. It opens with six bundled Trailhead events from an iPhone 16 Pro.
 
@@ -11,6 +11,12 @@ Install Rust with Cargo and select a full Xcode installation. The first build do
 ```sh
 cargo run --locked
 ```
+
+## Inspect a React Native app
+
+Install the debug package from a local npm tarball, configure the app's Debug build and start the desktop with `RNTD_LIVE=1 cargo run --locked`. [Package setup](packages/react-native-turbo-debugger/README.md)
+
+To reproduce the four iOS and Android cases and verify that Release builds exclude the collector, follow the [network test runbook](docs/NETWORK_TEST_RUNBOOK.md).
 
 ## Inspect the demo
 

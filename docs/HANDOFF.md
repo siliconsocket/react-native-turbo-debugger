@@ -1,6 +1,6 @@
 # Engineering handoff
 
-React Native Turbo Debugger is in development on the `develop` branch. The current deliverable is an interactive macOS prototype built with Rust and GPUI. It opens a local Trailhead fixture and simulates new events on demand. Connecting a React Native runtime or device is future work.
+React Native Turbo Debugger is in development on the `develop` branch. The current deliverable is an interactive macOS prototype built with Rust and GPUI. It opens a local Trailhead fixture by default. Live mode receives HTTP metadata from React Native Debug apps through the local npm package. The network test runbook covers iOS and Android on Legacy and New Architecture. [Network test runbook](NETWORK_TEST_RUNBOOK.md)
 
 ## Run and inspect
 
@@ -28,4 +28,4 @@ From the repository root, run `cargo run --locked` with Rust, Cargo and Xcode in
 
 Run `cargo fmt --check`, `cargo test --locked` and `cargo clippy --locked --all-targets -- -D warnings`. The automated tests cover event correlation, retry metadata and cursor and selection behavior. Use the walkthrough for native window and panel interactions.
 
-To add live capture, introduce an event source at the boundary currently served by the mock module. Route incoming events through the capture model so that pausing inspection, retaining selections and correlating events continue to work with the existing views.
+The local bridge projects mobile request events into the capture model. Future state integrations can use the same model to preserve pause behavior, stable selections, and explicit event correlation.
