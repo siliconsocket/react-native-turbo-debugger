@@ -8,6 +8,7 @@
 #import <objc/runtime.h>
 #import <sys/socket.h>
 #import <unistd.h>
+#import "RNTurboStateCapture.h"
 
 static char RNTDObservedRequest;
 
@@ -18,10 +19,18 @@ static uint64_t RNTDNow(void) {
 // The writer owns the socket and never blocks URLSession's delegate queue.
 @interface RNTDWriter : NSObject
 + (void)emit:(NSDictionary *)event;
++ (void)enqueue:(NSData *(^)(void))encode;
 @end
 
 @implementation RNTDWriter
 + (void)emit:(NSDictionary *)event {
+  [self enqueue:^NSData *{
+    NSData *payload = [NSJSONSerialization dataWithJSONObject:event options:0 error:NULL];
+    return payload.length <= 16384 ? payload : nil;
+  }];
+}
+
++ (void)enqueue:(NSData *(^)(void))encode {
 #if TARGET_OS_SIMULATOR
   static int socketFD = -1;
   static uint64_t retryAt = 0;
@@ -36,10 +45,13 @@ static uint64_t RNTDNow(void) {
   dispatch_async(queue, ^{
     @try {
       if (RNTDNow() < retryAt) return;
+      NSData *event = encode();
+      if (event.length == 0) return;
       BOOL connected = socketFD >= 0;
       if (!connected) {
         socketFD = [self connectToDebugger];
-        connected = socketFD >= 0 && [self writeFrame:[self hello] to:socketFD];
+        NSData *hello = [NSJSONSerialization dataWithJSONObject:[self hello] options:0 error:NULL];
+        connected = socketFD >= 0 && [self writeFrame:hello to:socketFD];
       }
       if (!connected || ![self writeFrame:event to:socketFD]) {
         if (socketFD >= 0) close(socketFD);
@@ -79,9 +91,8 @@ static uint64_t RNTDNow(void) {
   return -1;
 }
 
-+ (BOOL)writeFrame:(NSDictionary *)message to:(int)fd {
-  NSData *payload = [NSJSONSerialization dataWithJSONObject:message options:0 error:NULL];
-  if (payload.length == 0 || payload.length > 16384) return NO;
++ (BOOL)writeFrame:(NSData *)payload to:(int)fd {
+  if (payload.length == 0) return NO;
   uint32_t size = htonl((uint32_t)payload.length);
   NSMutableData *frame = [NSMutableData dataWithBytes:&size length:sizeof(size)];
   [frame appendData:payload];
@@ -97,6 +108,22 @@ static uint64_t RNTDNow(void) {
   return YES;
 }
 @end
+
+void RNTDEnqueueState(NSString *json) {
+  if (json.length == 0 || json.length > 16384) return;
+  uint64_t at = RNTDNow();
+  [RNTDWriter enqueue:^NSData *{
+    NSData *body = [json dataUsingEncoding:NSUTF8StringEncoding];
+    if (body.length == 0 || body.length > 16384) return nil;
+    id transition = [NSJSONSerialization JSONObjectWithData:body options:0 error:NULL];
+    if (![transition isKindOfClass:NSDictionary.class]) return nil;
+    NSString *prefix = [NSString stringWithFormat:@"{\"type\":\"state\",\"atMs\":%llu,\"transition\":", at];
+    NSMutableData *frame = [[prefix dataUsingEncoding:NSUTF8StringEncoding] mutableCopy];
+    [frame appendData:body];
+    [frame appendBytes:"}" length:1];
+    return frame;
+  }];
+}
 
 // Observe the handler that React Native already uses. The original NSURLSession
 // still performs the request, including uploads, redirects, cookies and caching.

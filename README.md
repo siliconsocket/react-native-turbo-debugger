@@ -1,6 +1,6 @@
 # React Native Turbo Debugger
 
-**Status: In development.** The macOS desktop supports live network capture from React Native Debug builds and includes a bundled demo session. The development branch is `develop`. [Engineering handoff](docs/HANDOFF.md)
+**Status: In development.** The macOS desktop supports live network and state capture from React Native Debug builds and includes a bundled demo session. The development branch is `develop`. [Engineering handoff](docs/HANDOFF.md)
 
 A native Rust and GPUI desktop prototype for inspecting a captured React Native session. It opens with six bundled Trailhead events from an iPhone 16 Pro.
 
@@ -21,8 +21,8 @@ To reproduce the four iOS and Android cases and verify that Release builds exclu
 ## Inspect the demo
 
 - **Expand** fills the workspace with the selected panel. **Restore** or **Esc** returns to the split layout, keeping the current selection and filters.
-- **Console** shows requests, the selected Zustand action, independent JS and native log streams, and a timeline. Click a request to inspect its response and correlated logs. Click the level label to cycle the filter, type to narrow a stream, or expand an entry to inspect its arguments.
-- **State** shows action history, Diff, Next, Previous and Raw views, event details and related logs. Use the arrow keys to change actions. Related events require a matching correlation ID within the session.
+- **Console** shows requests, the selected state diff, independent JS and native log streams, and a timeline. Click a request to inspect its response and correlated logs. Click the level label to cycle the filter, type to narrow a stream, or expand an entry to inspect its arguments.
+- **State** shows state history, source switches, Diff, Next, Previous and Raw views, event details and related logs. Use the arrow keys to change actions. Related events require a matching correlation ID within the session.
 - **+ Demo event** appends a deterministic Zustand update. **Pause** or a click on the time ruler pins the inspection cursor. Add another event, then **Resume** to see it. **Stop** ends capture for the current run and preserves inspection.
 - **⌘1 / ⌘2** switches between Console and State. In compact windows, **⌘J / ⌘N** selects the JS or native channel and **⌘D** toggles the State details drawer. Tab moves focus between controls.
 

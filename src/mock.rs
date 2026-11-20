@@ -26,7 +26,7 @@ pub fn scenario(name: &str) -> Session {
                 *duration_ms = None;
                 *response = None;
             }
-            ("long", Data::Zustand { after, .. }) => {
+            ("long", Data::State { after, .. }) => {
                 after["description"] = "Mountain trail ".repeat(100).into();
             }
             _ => {}
@@ -41,7 +41,8 @@ pub fn next_event(sequence: usize, at_ms: u64) -> Event {
         id: format!("demo-{sequence}"),
         correlation_id: None,
         at_ms,
-        data: Data::Zustand {
+        data: Data::State {
+            source: "zustand".into(),
             store: "useTrailStore".into(),
             action: "updateViewport".into(),
             revision_before: revision,

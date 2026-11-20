@@ -28,13 +28,15 @@ pub struct Event {
     rename_all_fields = "camelCase"
 )]
 pub enum Data {
-    Zustand {
+    State {
+        source: String,
         store: String,
         action: String,
         revision_before: u64,
         revision_after: u64,
         before: Value,
         after: Value,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         payload: Option<Value>,
     },
     Network {
@@ -49,6 +51,38 @@ pub enum Data {
     Js(Log),
     Native(Log),
 }
+pub const STATE_SOURCES: [(&str, &str); 3] = [
+    ("zustand", "Zustand"),
+    ("redux", "Redux"),
+    ("jotai", "Jotai"),
+];
+
+pub fn state_source_label(source: &str) -> &str {
+    STATE_SOURCES
+        .iter()
+        .find_map(|(key, label)| (*key == source).then_some(*label))
+        .unwrap_or(source)
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StateTransition {
+    pub source: String,
+    pub store: String,
+    pub action: String,
+    #[serde(deserialize_with = "Deserialize::deserialize")]
+    pub before: Value,
+    #[serde(deserialize_with = "Deserialize::deserialize")]
+    pub after: Value,
+    #[serde(default, deserialize_with = "explicit_payload")]
+    pub payload: Option<Value>,
+    pub correlation_id: Option<String>,
+}
+
+fn explicit_payload<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<Value>, D::Error> {
+    Value::deserialize(d).map(Some)
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum NetworkOutcome {
@@ -103,7 +137,10 @@ impl Event {
     }
     pub fn related(&self, other: &Self) -> bool {
         self.id != other.id
-            && self.correlation_id.is_some()
+            && self
+                .correlation_id
+                .as_ref()
+                .is_some_and(|id| !id.trim().is_empty())
             && self.correlation_id == other.correlation_id
     }
 }

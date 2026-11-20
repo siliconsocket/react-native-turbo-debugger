@@ -4,7 +4,7 @@ mod theme;
 
 use crate::{app::Capture, bridge, mock, session::*};
 use gpui::{prelude::*, *};
-use gpui_component::input::InputState;
+use gpui_component::{Sizable, input::InputState, switch::Switch};
 use std::collections::HashSet;
 use theme::*;
 
@@ -29,6 +29,7 @@ pub struct Debugger {
     native: bool,
     drawer: bool,
     filters: [Entity<InputState>; 2],
+    state_sources: [bool; 3],
     levels: [usize; 2],
     expanded: HashSet<String>,
     focus: FocusHandle,
@@ -98,6 +99,7 @@ impl Debugger {
             native: false,
             drawer: false,
             filters,
+            state_sources: [true; 3],
             levels: [0; 2],
             expanded: HashSet::new(),
             focus,
@@ -159,8 +161,7 @@ impl Debugger {
     fn move_selection(&mut self, delta: isize) {
         let ids: Vec<_> = self
             .capture
-            .visible()
-            .filter(|e| matches!(e.data, Data::Zustand { .. }))
+            .visible_states(self.state_sources)
             .map(|e| e.id.clone())
             .collect();
         if ids.is_empty() {
@@ -176,6 +177,7 @@ impl Debugger {
 }
 impl Render for Debugger {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.capture.reconcile_action(self.state_sources);
         let width = f32::from(window.viewport_size().width);
         let rail = width < 1280.;
         let title = if self.state_view {
@@ -262,11 +264,26 @@ impl Render for Debugger {
             .flex_none()
             .gap_2()
             .child(heading(title))
-            .child(muted(if self.state_view {
-                "Zustand store"
-            } else {
-                "React Native"
-            }))
+            .when(self.state_view, |d| {
+                d.child(
+                    row()
+                        .gap_3()
+                        .pl_2()
+                        .children(STATE_SOURCES.iter().enumerate().map(
+                            |(index, (source, label))| {
+                                Switch::new(*source)
+                                    .small()
+                                    .label(*label)
+                                    .checked(self.state_sources[index])
+                                    .on_click(cx.listener(move |s, enabled, _, cx| {
+                                        s.state_sources[index] = *enabled;
+                                        cx.notify();
+                                    }))
+                            },
+                        )),
+                )
+            })
+            .when(!self.state_view, |d| d.child(muted("React Native")))
             .child(div().flex_1())
             .when(self.state_view && rail && self.maximized.is_none(), |d| {
                 d.child(self.button("details", "Details", self.drawer, cx, |s, _| {

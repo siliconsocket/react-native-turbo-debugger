@@ -35,6 +35,13 @@ public final class NetworkCapture {
         return builder;
     }
 
+    static void enqueueState(String json) {
+        Sink target = sink;
+        if (target != null && json != null && json.length() <= 16 * 1024) {
+            target.emitState(json, target.elapsed());
+        }
+    }
+
     private static Response intercept(Interceptor.Chain chain) throws IOException {
         Sink target = sink;
         Request request = chain.request();
@@ -80,20 +87,44 @@ public final class NetworkCapture {
         }
 
         void emit(String type, String id, long at, String method, String path, Integer status, String outcome) {
+            enqueue(() -> new JSONObject()
+                .put("type", type).put("id", id).put("atMs", at)
+                .put("method", method)
+                .put("path", path == null ? null : path.substring(0, Math.min(path.length(), 2048)))
+                .put("status", status).put("outcome", outcome).toString());
+        }
+
+        void emitState(String json, long at) {
+            enqueue(() -> {
+                if (json.getBytes(StandardCharsets.UTF_8).length > 16 * 1024) {
+                    return null;
+                }
+                new JSONObject(json);
+                return "{\"type\":\"state\",\"atMs\":" + at + ",\"transition\":" + json + "}";
+            });
+        }
+
+        private interface Frame {
+            String encode() throws JSONException;
+        }
+
+        private void enqueue(Frame frame) {
             writer.execute(() -> {
                 if (elapsed() < retryAt) {
                     return;
                 }
                 try {
+                    String message = frame.encode();
+                    if (message == null) {
+                        return;
+                    }
                     if (socket == null) {
                         connect();
                     }
-                    write(new JSONObject()
-                        .put("type", type).put("id", id).put("atMs", at)
-                        .put("method", method)
-                        .put("path", path == null ? null : path.substring(0, Math.min(path.length(), 2048)))
-                        .put("status", status).put("outcome", outcome));
-                } catch (IOException | JSONException error) {
+                    write(message);
+                } catch (JSONException ignored) {
+                    // Drop invalid JSON without disturbing the connection.
+                } catch (IOException error) {
                     close();
                     retryAt = elapsed() + 500L;
                 }
@@ -105,11 +136,11 @@ public final class NetworkCapture {
             socket.connect(new InetSocketAddress("127.0.0.1", 7410), 250);
             output = new DataOutputStream(socket.getOutputStream());
             write(new JSONObject().put("type", "hello").put("version", 1)
-                .put("app", app).put("device", device).put("platform", "Android"));
+                .put("app", app).put("device", device).put("platform", "Android").toString());
         }
 
-        private void write(JSONObject message) throws IOException {
-            byte[] bytes = message.toString().getBytes(StandardCharsets.UTF_8);
+        private void write(String message) throws IOException {
+            byte[] bytes = message.getBytes(StandardCharsets.UTF_8);
             output.writeInt(bytes.length);
             output.write(bytes);
             output.flush();

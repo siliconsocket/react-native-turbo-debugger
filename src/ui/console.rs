@@ -22,7 +22,7 @@ impl Debugger {
     pub(super) fn console(&self, width: f32, window: &mut Window, cx: &mut Context<Self>) -> Div {
         match self.maximized {
             Some(Panel::Network) => return self.network(width, window, cx),
-            Some(Panel::Preview) => return self.diff_preview(width, cx),
+            Some(Panel::Preview) => return self.diff_preview(cx),
             Some(Panel::Timeline) => return self.timeline(width, cx),
             Some(Panel::Logs { native }) => return self.logs(native, false, window, cx),
             _ => {}
@@ -33,7 +33,7 @@ impl Debugger {
             .min_h_0()
             .gap_2()
             .child(self.network(width, window, cx).flex_basis(relative(0.6)))
-            .child(self.diff_preview(width, cx).flex_basis(relative(0.4)));
+            .child(self.diff_preview(cx).flex_basis(relative(0.4)));
         col()
             .flex_1()
             .gap_2()
