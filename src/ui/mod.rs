@@ -2,7 +2,7 @@ mod console;
 mod investigation;
 mod theme;
 
-use crate::{app::Capture, mock, session::*};
+use crate::{app::Capture, bridge, mock, session::*};
 use gpui::{prelude::*, *};
 use gpui_component::input::InputState;
 use std::collections::HashSet;
@@ -22,6 +22,8 @@ enum Panel {
 pub struct Debugger {
     maximized: Option<Panel>,
     capture: Capture,
+    live: bool,
+    bridge_error: bool,
     state_view: bool,
     tab: usize,
     native: bool,
@@ -35,8 +37,47 @@ pub struct Debugger {
 impl Debugger {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let scenario = std::env::var("RNTD_SCENARIO").unwrap_or_default();
-        let mut capture = Capture::new(mock::scenario(&scenario));
-        capture.connected = scenario != "disconnected";
+        let live = std::env::var("RNTD_LIVE").as_deref() == Ok("1");
+        let mut bridge_error = false;
+        let capture = if live {
+            match bridge::listen() {
+                Ok(receiver) => {
+                    cx.spawn(async move |this, cx| {
+                        loop {
+                            Timer::after(std::time::Duration::from_millis(40)).await;
+                            let updates: Vec<_> = receiver.try_iter().take(256).collect();
+                            if updates.is_empty() {
+                                continue;
+                            }
+                            if this
+                                .update(cx, |this, cx| {
+                                    for update in updates {
+                                        this.capture.ingest(update);
+                                    }
+                                    cx.notify();
+                                })
+                                .is_err()
+                            {
+                                break;
+                            }
+                        }
+                    })
+                    .detach();
+                }
+                Err(error) => {
+                    eprintln!(
+                        "Network bridge could not listen on 127.0.0.1:{}: {error}",
+                        bridge::PORT
+                    );
+                    bridge_error = true;
+                }
+            }
+            Capture::live()
+        } else {
+            let mut capture = Capture::new(mock::scenario(&scenario));
+            capture.connected = scenario != "disconnected";
+            capture
+        };
         let filters = std::array::from_fn(|_| {
             let input = cx.new(|cx| InputState::new(window, cx).placeholder("Filter text…"));
             cx.subscribe(&input, |_, _, _: &gpui_component::input::InputEvent, cx| {
@@ -50,6 +91,8 @@ impl Debugger {
         Self {
             maximized: None,
             capture,
+            live,
+            bridge_error,
             state_view: std::env::var("RNTD_VIEW").as_deref() == Ok("state"),
             tab: 0,
             native: false,
@@ -179,7 +222,9 @@ impl Render for Debugger {
             .child(session.device.clone())
             .child(muted("│"))
             .child(mono(
-                if self.capture.connected {
+                if self.bridge_error {
+                    "○ Port unavailable"
+                } else if self.capture.connected {
                     "● Live"
                 } else {
                     "○ Disconnected"
@@ -258,11 +303,14 @@ impl Render for Debugger {
                 cx,
                 |s, _| s.capture.stopped = true,
             ))
-            .when(!self.capture.stopped && self.capture.connected, |d| {
-                d.child(self.button("append", "+ Demo event", false, cx, |s, _| {
-                    s.capture.append()
-                }))
-            });
+            .when(
+                !self.live && !self.capture.stopped && self.capture.connected,
+                |d| {
+                    d.child(self.button("append", "+ Demo event", false, cx, |s, _| {
+                        s.capture.append()
+                    }))
+                },
+            );
         let content = if self.state_view {
             self.investigation(width, window, cx)
         } else {

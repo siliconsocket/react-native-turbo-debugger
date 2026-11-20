@@ -1,0 +1,17 @@
+plugins {
+    id 'com.android.library'
+}
+
+android {
+    namespace 'com.siliconsocket.rnturbodebugger'
+    compileSdk rootProject.ext.compileSdkVersion
+
+    defaultConfig {
+        minSdk rootProject.ext.minSdkVersion
+    }
+}
+
+dependencies {
+    compileOnly 'com.facebook.react:react-android'
+    compileOnly 'com.squareup.okhttp3:okhttp:4.9.2'
+}

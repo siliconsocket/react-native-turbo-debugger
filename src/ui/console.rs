@@ -114,15 +114,13 @@ impl Debugger {
             .visible()
             .filter(|e| matches!(e.data, Data::Network { .. }))
             .collect();
+        let cursor = self.capture.cursor();
         let failures = events
             .iter()
             .filter(|e| {
                 matches!(
-                    e.data,
-                    Data::Network {
-                        status: Some(400..),
-                        ..
-                    }
+                    e.network_status_at(cursor),
+                    Some((Some(400..), _, _)) | Some((_, _, Some(NetworkOutcome::Failed)))
                 )
             })
             .count();
@@ -142,23 +140,27 @@ impl Debugger {
             .border_color(color("divider"))
             .child(muted("Method").w(px(54.)))
             .child(muted("Path").flex_1())
-            .child(muted("Status").w(px(48.)))
+            .child(muted("Status").w(px(66.)))
             .child(muted("Time").w(px(58.)))
             .when(waterfall, |d| d.child(muted("Waterfall").w(px(92.))));
         let mut list = scroll("requests");
         for e in events {
-            let Data::Network {
-                method,
-                path,
-                status,
-                duration_ms,
-                ..
-            } = &e.data
-            else {
+            let Data::Network { method, path, .. } = &e.data else {
                 continue;
             };
             let id = e.id.clone();
-            let fail = status.is_some_and(|s| s >= 400);
+            let (status, duration_ms, outcome) = e.network_status_at(cursor).unwrap();
+            let fail = status.is_some_and(|s| s >= 400) || outcome == Some(NetworkOutcome::Failed);
+            let status_label =
+                status
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| match outcome {
+                        Some(NetworkOutcome::Failed) => "Failed".into(),
+                        Some(NetworkOutcome::Cancelled) => "Canceled".into(),
+                        Some(NetworkOutcome::Disconnected) => "Lost".into(),
+                        _ if self.live => "Pending".into(),
+                        _ => "—".into(),
+                    });
             list = list.child(
                 row()
                     .id(SharedString::from(format!("req-{id}")))
@@ -178,13 +180,7 @@ impl Debugger {
                     .border_color(rgb(0x303437))
                     .child(mono(method, if method == "GET" { "key" } else { "accent" }).w(px(54.)))
                     .child(mono(path, "text").flex_1().overflow_hidden())
-                    .child(
-                        mono(
-                            status.map_or("—".into(), |v| v.to_string()),
-                            if fail { "error" } else { "string" },
-                        )
-                        .w(px(48.)),
-                    )
+                    .child(mono(status_label, if fail { "error" } else { "string" }).w(px(66.)))
                     .child(
                         mono(
                             duration_ms.map_or("—".into(), |v| format!("{v} ms")),
@@ -199,7 +195,7 @@ impl Debugger {
                                 .h(px(8.))
                                 .relative()
                                 .bg(color("surface"))
-                                .when_some(*duration_ms, |d, ms| {
+                                .when_some(duration_ms, |d, ms| {
                                     d.child(
                                         div()
                                             .absolute()

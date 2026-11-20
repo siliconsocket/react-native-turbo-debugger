@@ -1,0 +1,17 @@
+{
+  "name": "@siliconsocket/react-native-turbo-debugger",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Debug-only React Native network capture for the Turbo Debugger desktop app",
+  "license": "MIT",
+  "main": "index.js",
+  "files": ["android/build.gradle", "android/src", "ios", "index.js", "react-native.config.js", "LICENSE"],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/siliconsocket/react-native-turbo-debugger.git",
+    "directory": "packages/react-native-turbo-debugger"
+  },
+  "peerDependencies": {
+    "react-native": ">=0.76 <0.84"
+  }
+}
