@@ -16,7 +16,7 @@ cargo run --locked
 
 Install the debug package from a local npm tarball, configure the app's Debug build and start the desktop with `RNTD_LIVE=1 cargo run --locked`. [Package setup](packages/react-native-turbo-debugger/README.md)
 
-To reproduce the four iOS and Android cases and verify that Release builds exclude the collector, follow the [network test runbook](docs/NETWORK_TEST_RUNBOOK.md).
+To reproduce the four iOS and Android cases and verify that Release builds exclude the collector, follow the [network and state test runbook](docs/NETWORK_TEST_RUNBOOK.md).
 
 ## Inspect the demo
 

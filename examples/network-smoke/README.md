@@ -1,10 +1,10 @@
-# Local network smoke test
+# Local network and state smoke test
 
-This example makes a Fetch GET and an XMLHttpRequest POST against a local fixture server. Use the [network test runbook](../../docs/NETWORK_TEST_RUNBOOK.md) to install the package, run all four Debug cases, and inspect the Release artifacts.
+This example makes a Fetch GET and an XMLHttpRequest POST against a local fixture server. The Debug UI runs deterministic Zustand, Redux Toolkit, Jotai, and direct capture scenarios. Use the [network and state test runbook](../../docs/NETWORK_TEST_RUNBOOK.md) to install the package, run all four Debug cases, and inspect the Release artifacts.
 
-## Debug results
+## Network-only baseline (0.1.0)
 
-The local tarball was installed in both template apps. Each capture shows the actual HTTP requests reaching the desktop from the app.
+The 0.1.0 tarball was installed in both template apps. Each capture shows the actual HTTP requests reaching the desktop from the app.
 
 | Platform | RN 0.76.9 Legacy | RN 0.83.1 New Architecture |
 | --- | --- | --- |
